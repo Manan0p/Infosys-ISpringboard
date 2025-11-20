@@ -36,6 +36,24 @@ footer { margin-top:30px; text-align:center; font-size:12px; opacity:.6; }
 <body>
 <div class="container">
   <h2>Prediction Result</h2>
+  <p><b>Job Description:</b> {{ description }}</p>
+  <h3>Prediction:
+        {% if label == 'Fake Job' %}
+        <span class="fake">{{ label }}</span>
+        {% else %}
+        <span class="real">{{ label }}</span>
+        {% endif %}
+  </h3>
+<p>Confidence: {{ confidence }}%</p>
+<div style="display:flex;gap:18px;justify-content:center;margin-top:18px;">
+  <div style="background:#13263f;padding:12px 18px;border-radius:10px;">
+    <strong>Fake Total</strong><br>{{ fake or 0 }}
+  </div>
+  <div style="background:#13263f;padding:12px 18px;border-radius:10px;">
+    <strong>Real Total</strong><br>{{ real or 0 }}
+  </div>
+</div>
+<a href="/">🔙 Go Back</a>
   <p>
     <span class="badge {% if label == 'Fake Job' %}fake{% else %}real{% endif %}">{{ label }}</span>
   </p>

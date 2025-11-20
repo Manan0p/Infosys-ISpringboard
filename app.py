@@ -1,33 +1,86 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for
 import joblib
  
 app = Flask(__name__)
  
-# Load saved model and vectorizer
+# Load model and vectorizer
 model = joblib.load('fake_job_model.pkl')
 vectorizer = joblib.load('tfidf_vectorizer.pkl')
  
+# Global counters (basic dashboard)
+fake_count = 0
+real_count = 0
+last_label = None
+last_confidence = None
+last_text = None
+
 @app.route('/')
 def home():
-    return render_template('index.html')
- 
+    return render_template(
+        'index.html',
+        fake=fake_count,
+        real=real_count,
+        last_label=last_label,
+        last_confidence=last_confidence,
+        last_text=last_text
+    )
+
 @app.route('/predict', methods=['POST'])
 def predict():
-    job_desc = request.form['job_description']
-    if not job_desc.strip():
-        return render_template('index.html', error="Please enter a job description.")
-    # Transform and predict
+    global fake_count, real_count, last_label, last_confidence, last_text
+    job_desc = request.form.get('job_description', '').strip()
+
+    # Validation
+    if not job_desc:
+        return render_template(
+            'index.html',
+            error="Description cannot be empty.",
+            fake=fake_count, real=real_count,
+            last_label=last_label, last_confidence=last_confidence, last_text=last_text
+        )
+    if len(job_desc.split()) < 5:
+        return render_template(
+            'index.html',
+            error="Please enter at least 5 words.",
+            fake=fake_count, real=real_count,
+            last_label=last_label, last_confidence=last_confidence, last_text=last_text
+        )
+    # Non‑text heuristic: count alphabetic chars ratio
+    letters = sum(c.isalpha() for c in job_desc)
+    ratio = letters / max(1, len(job_desc))
+    if ratio < 0.40:
+        return render_template(
+            'index.html',
+            error="Input seems non-text (too many numbers/symbols).",
+            fake=fake_count, real=real_count,
+            last_label=last_label, last_confidence=last_confidence, last_text=last_text
+        )
+
     X_input = vectorizer.transform([job_desc])
-    prediction = model.predict(X_input)[0]
+    pred = model.predict(X_input)[0]
     prob = model.predict_proba(X_input)[0][1]
- 
-    label = "Fake Job" if prediction == 1 else "Real Job"
-    confidence = round(prob * 100, 2) if prediction == 1 else round((1 - prob) * 100, 2)
- 
-    return render_template('result.html', 
-                           label=label, 
-                           confidence=confidence, 
-                           description=job_desc)
+
+    label = "Fake Job" if pred == 1 else "Real Job"
+    confidence = round(prob * 100, 2) if pred == 1 else round((1 - prob) * 100, 2)
+
+    if pred == 1:
+        fake_count += 1
+    else:
+        real_count += 1
+
+    # Store last result
+    last_label = label
+    last_confidence = confidence
+    last_text = job_desc
+
+    return render_template(
+        'result.html',
+        label=label,
+        confidence=confidence,
+        description=job_desc,
+        fake=fake_count,
+        real=real_count
+    )
  
 if __name__ == '__main__':
     app.run(debug=True)
