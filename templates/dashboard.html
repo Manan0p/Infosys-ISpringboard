@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#0f172a; --panel:#1e293b; --accent:#3b82f6; --fake:#dc2626; --real:#16a34a; --text:#f1f5f9; --muted:#94a3b8; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:"Inter",Arial,sans-serif; padding:40px 24px; }
+h2 { margin:0 0 28px; text-align:center; }
+.grid { max-width:900px; margin:0 auto; display:grid; gap:22px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+.card { background:var(--panel); padding:22px 24px; border-radius:16px; box-shadow:0 8px 22px -8px rgba(0,0,0,.55); }
+.big { font-size:34px; font-weight:600; margin:10px 0 0; }
+.label { font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); }
+.badge { display:inline-block; padding:6px 12px; border-radius:10px; font-weight:600; font-size:13px; color:#fff; margin-top:6px; }
+.fake { background:linear-gradient(135deg,var(--fake),#ef4444); }
+.real { background:linear-gradient(135deg,var(--real),#22c55e); }
+.actions { text-align:center; margin-top:34px; }
+a { color:var(--accent); text-decoration:none; font-weight:600; margin:0 10px; }
+a:hover { text-decoration:underline; }
+footer { margin-top:50px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+  <h2>Admin Dashboard</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">Total Predictions</div>
+      <div class="big">{{ total }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Fake Jobs Detected</div>
+      <div class="big">{{ fake }}</div>
+      <span class="badge fake">Fake</span>
+    </div>
+    <div class="card">
+      <div class="label">Real Jobs Detected</div>
+      <div class="big">{{ real }}</div>
+      <span class="badge real">Real</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a href="/history">📄 View History</a>
+    <a href="/logout">🚪 Logout</a>
+    <a href="/">🏠 Home</a>
+  </div>
+  <footer>Fake Job Posting Detector • Admin Panel</footer>
+</body>
+</html>

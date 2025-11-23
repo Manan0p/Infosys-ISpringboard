@@ -36,6 +36,22 @@ footer { margin-top:30px; text-align:center; font-size:12px; opacity:.6; }
 <body>
 <div class="container">
   <h2>Prediction Result</h2>
+  
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:12px;">
+  {% if session.admin_logged_in %}
+    <a href="{{ url_for('admin_dashboard') }}">
+      <button type="button" style="background:#3b82f6;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;">
+        Dashboard
+      </button>
+    </a>
+    <a href="{{ url_for('logout') }}">
+      <button type="button" style="background:#dc2626;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;">
+        Logout
+      </button>
+    </a>
+  {% endif %}
+  </div>
+<!-- ...existing code... -->
   <p><b>Job Description:</b> {{ description }}</p>
   <h3>Prediction:
         {% if label == 'Fake Job' %}

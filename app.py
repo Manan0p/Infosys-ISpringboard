@@ -1,115 +1,123 @@
-from flask import Flask, render_template, request
-import joblib
-import os, csv
+from flask import Flask, render_template, request, redirect, url_for, session
+import joblib, sqlite3
 from datetime import datetime
-import pandas as pd
+
+DB_PATH = 'job_predictions.db'
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_description TEXT,
+            prediction TEXT,
+            confidence REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS admin (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        );
+    ''')
+    cur = conn.execute("SELECT COUNT(*) FROM admin WHERE username='admin'")
+    if cur.fetchone()[0] == 0:
+        conn.execute("INSERT INTO admin (username, password) VALUES (?, ?)", ('admin', 'admin123'))
+    conn.commit()
+    conn.close()
+
+init_db()
 
 app = Flask(__name__)
+app.secret_key = "mysecretkey123"
 
-# Load model and vectorizer
 model = joblib.load('fake_job_model.pkl')
 vectorizer = joblib.load('tfidf_vectorizer.pkl')
 
-# Global counters and last prediction cache
-fake_count = 0
-real_count = 0
-last_label = None
-last_confidence = None
-last_text = None
-
-LOG_PATH = 'predictions_log.csv'
-
+# Force login before showing index
+def get_counts():
+    conn = sqlite3.connect(DB_PATH)
+    fake_jobs = conn.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Fake Job'").fetchone()[0]
+    real_jobs = conn.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Real Job'").fetchone()[0]
+    conn.close()
+    return fake_jobs, real_jobs
 
 @app.route('/')
 def home():
-    return render_template(
-        'index.html',
-        fake=fake_count,
-        real=real_count,
-        last_label=last_label,
-        last_confidence=last_confidence,
-        last_text=last_text
-    )
-
-
-def append_log(description, label, confidence):
-    file_empty = (not os.path.isfile(LOG_PATH)) or os.path.getsize(LOG_PATH) == 0
-    with open(LOG_PATH, 'a', newline='', encoding='utf-8') as f:
-        w = csv.writer(f, quoting=csv.QUOTE_ALL)
-        if file_empty:
-            w.writerow(['timestamp', 'job_description', 'prediction', 'confidence'])
-        w.writerow([datetime.now().strftime('%Y-%m-%d %H:%M:%S'), description, label, confidence])
-
-
-@app.route('/history')
-def history():
-    if not os.path.isfile(LOG_PATH) or os.path.getsize(LOG_PATH) == 0:
-        return render_template('history.html', rows=[], headers=['timestamp', 'job_description', 'prediction', 'confidence'])
-    try:
-        df = pd.read_csv(LOG_PATH)
-    except pd.errors.EmptyDataError:
-        return render_template('history.html', rows=[], headers=['timestamp', 'job_description', 'prediction', 'confidence'])
-    return render_template('history.html', rows=df.values.tolist(), headers=df.columns.tolist())
-
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    fake_jobs, real_jobs = get_counts()
+    return render_template('index.html', fake=fake_jobs, real=real_jobs)
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    global fake_count, real_count, last_label, last_confidence, last_text
-    job_desc = request.form.get('job_description', '').strip()
-
-    # Validation
-    if not job_desc:
-        return render_template(
-            'index.html',
-            error="Description cannot be empty.",
-            fake=fake_count, real=real_count,
-            last_label=last_label, last_confidence=last_confidence, last_text=last_text
-        )
-    if len(job_desc.split()) < 5:
-        return render_template(
-            'index.html',
-            error="Please enter at least 5 words.",
-            fake=fake_count, real=real_count,
-            last_label=last_label, last_confidence=last_confidence, last_text=last_text
-        )
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    job_desc = request.form.get('job_description','').strip()
+    fake_jobs, real_jobs = get_counts()  # current counts for error re-render
+    if not job_desc or len(job_desc.split()) < 5:
+        return render_template('index.html', error="Please enter ≥5 words.", fake=fake_jobs, real=real_jobs)
     letters = sum(c.isalpha() for c in job_desc)
-    ratio = letters / max(1, len(job_desc))
-    if ratio < 0.40:
-        return render_template(
-            'index.html',
-            error="Input seems non-text (too many numbers/symbols).",
-            fake=fake_count, real=real_count,
-            last_label=last_label, last_confidence=last_confidence, last_text=last_text
-        )
+    if letters / max(1,len(job_desc)) < 0.40:
+        return render_template('index.html', error="Too many symbols/numbers.", fake=fake_jobs, real=real_jobs)
 
-    # Predict
-    X_input = vectorizer.transform([job_desc])
-    pred = model.predict(X_input)[0]
-    prob = model.predict_proba(X_input)[0][1]
-
+    X = vectorizer.transform([job_desc])
+    pred = model.predict(X)[0]
+    prob = model.predict_proba(X)[0][1]
     label = "Fake Job" if pred == 1 else "Real Job"
-    confidence = round(prob * 100, 2) if pred == 1 else round((1 - prob) * 100, 2)
+    confidence = round(prob*100,2) if pred==1 else round((1-prob)*100,2)
 
-    if pred == 1:
-        fake_count += 1
-    else:
-        real_count += 1
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('INSERT INTO predictions (job_description, prediction, confidence) VALUES (?, ?, ?)',
+                 (job_desc, label, confidence))
+    conn.commit()
+    conn.close()
 
-    last_label = label
-    last_confidence = confidence
-    last_text = job_desc
+    # updated counts after insert
+    fake_jobs, real_jobs = get_counts()
+    return render_template('result.html', label=label, confidence=confidence, description=job_desc,
+                           fake=fake_jobs, real=real_jobs)
 
-    append_log(job_desc, label, confidence)
+@app.route('/history')
+def history():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute('SELECT timestamp, job_description, prediction, confidence FROM predictions ORDER BY id DESC').fetchall()
+    conn.close()
+    return render_template('history.html', records=[(r[1], r[2], r[3], r[0]) for r in rows])  # match job,label,conf,time
 
-    return render_template(
-        'result.html',
-        label=label,
-        confidence=confidence,
-        description=job_desc,
-        fake=fake_count,
-        real=real_count
-    )
+@app.route('/admin_login', methods=['GET','POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form.get('username','')
+        password = request.form.get('password','')
+        conn = sqlite3.connect(DB_PATH)
+        admin = conn.execute("SELECT id FROM admin WHERE username=? AND password=?", (username,password)).fetchone()
+        conn.close()
+        if admin:
+            session['admin_logged_in'] = True
+            return redirect(url_for('home'))
+        return render_template('login.html', error="Invalid username or password.")
+    return render_template('login.html')
 
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    conn = sqlite3.connect(DB_PATH)
+    fake_jobs = conn.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Fake Job'").fetchone()[0]
+    real_jobs = conn.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Real Job'").fetchone()[0]
+    total = fake_jobs + real_jobs
+    conn.close()
+    return render_template('dashboard.html', total=total, fake=fake_jobs, real=real_jobs)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('admin_login'))
 
 if __name__ == '__main__':
     app.run(debug=True)

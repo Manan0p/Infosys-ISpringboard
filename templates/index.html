@@ -89,6 +89,27 @@
 </head>
 <body>
   <h2>Fake Job Detection System</h2>
+  
+  <div style="max-width:760px;margin:0 auto 16px;display:flex;justify-content:flex-end;gap:10px;">
+  {% if session.admin_logged_in %}
+    <a href="{{ url_for('admin_dashboard') }}">
+      <button type="button" style="background:#3b82f6;border:none;color:#fff;padding:10px 18px;border-radius:8px;cursor:pointer;">
+        Admin Dashboard
+      </button>
+    </a>
+    <a href="{{ url_for('logout') }}">
+      <button type="button" style="background:#dc2626;border:none;color:#fff;padding:10px 18px;border-radius:8px;cursor:pointer;">
+        Logout
+      </button>
+    </a>
+  {% else %}
+    <a href="{{ url_for('admin_login') }}">
+      <button type="button" style="background:#6366f1;border:none;color:#fff;padding:10px 18px;border-radius:8px;cursor:pointer;">
+        Admin Login
+      </button>
+    </a>
+  {% endif %}
+  </div>
 
   <div style="max-width:760px;margin:0 auto 10px;text-align:right;">
     <a href="/history" style="text-decoration:none;">
@@ -182,8 +203,8 @@
   <footer>
     <div>
       Project: <span>Fake Job Posting Detector</span> |
-      Team: <span>Your Team Name</span> |
-      Author: <span>Your Name</span>
+      Team: <span>2</span> |
+      Author: <span>Manan Lall</span>
     </div>
   </footer>
 </body>
