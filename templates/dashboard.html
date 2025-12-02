@@ -49,6 +49,12 @@ footer { text-align:center; padding:32px 0 24px; font-size:13px; color:var(--mut
 </head>
 <body>
 <header class="header">
+  <div class="dashboard-section">
+    <h2>📊 Model Management</h2>
+    <a href="{{ url_for('retrain_logs') }}" class="btn">📋 View Training Logs</a>
+    <button onclick="retrainModel()" class="btn">🔄 Retrain Model</button>
+  </div>
+
   <div class="brand">📊 Dashboard</div>
   <nav>
     <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
