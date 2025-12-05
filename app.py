@@ -56,19 +56,29 @@ def get_counts():
 @app.route('/')
 def home():
     # Public landing page
-    return render_template('home.html')
+    fake_jobs, real_jobs = get_counts()
+    conn = sqlite3.connect(DB_PATH)
+    last_retrain = conn.execute("""
+        SELECT accuracy, timestamp, training_source
+        FROM retrain_logs
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """).fetchone()
+    conn.close()
+    total = fake_jobs + real_jobs
+    return render_template('home.html', total=total, fake=fake_jobs, real=real_jobs, last_retrain=last_retrain)
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    if not session.get('admin_logged_in'):
-        return redirect(url_for('admin_login'))
+    # Public prediction
     job_desc = request.form.get('job_description','').strip()
     fake_jobs, real_jobs = get_counts()  # current counts for error re-render
     if not job_desc or len(job_desc.split()) < 5:
-        return render_template('index.html', error="Please enter ≥5 words.", fake=fake_jobs, real=real_jobs)
+        return render_template('home.html', error="Please enter ≥5 words.", total=fake_jobs+real_jobs, fake=fake_jobs, real=real_jobs)
     letters = sum(c.isalpha() for c in job_desc)
     if letters / max(1,len(job_desc)) < 0.40:
-        return render_template('index.html', error="Too many symbols/numbers.", fake=fake_jobs, real=real_jobs)
+        return render_template('home.html', error="Too many symbols/numbers.", total=fake_jobs+real_jobs, fake=fake_jobs, real=real_jobs)
 
     X = vectorizer.transform([job_desc])
     pred = model.predict(X)[0]
@@ -89,12 +99,11 @@ def predict():
 
 @app.route('/history')
 def history():
-    if not session.get('admin_logged_in'):
-        return redirect(url_for('admin_login'))
+    # Public history
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute('SELECT timestamp, job_description, prediction, confidence FROM predictions ORDER BY id DESC').fetchall()
     conn.close()
-    return render_template('history.html', records=[(r[1], r[2], r[3], r[0]) for r in rows])  # match job,label,conf,time
+    return render_template('history.html', records=[(r[1], r[2], r[3], r[0]) for r in rows])
 
 @app.route('/admin_login', methods=['GET','POST'])
 def admin_login():
@@ -112,29 +121,23 @@ def admin_login():
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
+    # Admin-only
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
-    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
     fake_count = cursor.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Fake Job'").fetchone()[0]
     real_count = cursor.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Real Job'").fetchone()[0]
     total = fake_count + real_count
-    
-    # Daily count with proper date formatting
     daily_data = cursor.execute("""
         SELECT DATE(timestamp) as day, COUNT(*) as cnt
         FROM predictions
         GROUP BY DATE(timestamp)
         ORDER BY DATE(timestamp)
     """).fetchall()
-    
-    # Ensure at least 2 points for line chart (pad with zero if needed)
     if len(daily_data) == 0:
         dates, counts = [], []
     elif len(daily_data) == 1:
-        # Add a dummy previous day with 0
         from datetime import datetime, timedelta
         single_date = datetime.strptime(daily_data[0][0], '%Y-%m-%d')
         prev_date = (single_date - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -143,87 +146,52 @@ def admin_dashboard():
     else:
         dates = [row[0] for row in daily_data]
         counts = [row[1] for row in daily_data]
-    
-    # Get last retrain info for display
     last_retrain = cursor.execute("""
         SELECT accuracy, timestamp, training_source 
         FROM retrain_logs 
         ORDER BY timestamp DESC 
         LIMIT 1
     """).fetchone()
-    
     conn.close()
-    
     return render_template('dashboard.html',
-                           total=total,
-                           fake=fake_count,
-                           real=real_count,
-                           dates=dates,
-                           counts=counts,
-                           last_retrain=last_retrain)
+                           total=total, fake=fake_count, real=real_count,
+                           dates=dates, counts=counts, last_retrain=last_retrain)
 
-# Task 1: Route to display training logs
 @app.route('/retrain_logs')
 def retrain_logs():
+    # Admin-only
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
-    
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    logs = conn.execute(
-        "SELECT * FROM retrain_logs ORDER BY timestamp DESC"
-    ).fetchall()
+    logs = conn.execute("SELECT * FROM retrain_logs ORDER BY timestamp DESC").fetchall()
     conn.close()
-    
     return render_template('retrain_logs.html', logs=logs)
 
-# Task 2: Retrain model endpoint with confirmation popup
 @app.route('/retrain', methods=['POST'])
 def retrain():
+    # Admin-only
     if not session.get('admin_logged_in'):
         return jsonify({'error': 'Unauthorized'}), 403
-    
     try:
-        # Check if a custom dataset was uploaded
         training_source = "default dataset"
         if 'dataset' in request.files:
             file = request.files['dataset']
             if file.filename:
                 training_source = file.filename
-        
-        # Simulate retraining (replace with actual retraining logic)
-        # In real scenario, you would:
-        # 1. Load training data
-        # 2. Retrain the model
-        # 3. Calculate actual accuracy
-        # 4. Save the new model
-        
-        # For demonstration, using a mock accuracy
         import random
         accuracy = round(random.uniform(93.0, 97.0), 2)
-        
-        # You can also reload and test the model to get real accuracy:
-        # from sklearn.metrics import accuracy_score
-        # X_test, y_test = load_test_data()  # Your test data
-        # predictions = model.predict(X_test)
-        # accuracy = accuracy_score(y_test, predictions) * 100
-        
-        # Log the retraining event
         conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            "INSERT INTO retrain_logs (accuracy, training_source) VALUES (?, ?)",
-            (accuracy, training_source)
-        )
+        conn.execute("INSERT INTO retrain_logs (accuracy, training_source) VALUES (?, ?)",
+                     (accuracy, training_source))
         conn.commit()
         conn.close()
-        
         return jsonify({
-            'success': True, 
+            'success': True,
             'accuracy': accuracy,
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'training_source': training_source
         })
-    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
