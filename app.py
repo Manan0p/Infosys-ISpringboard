@@ -68,6 +68,11 @@ def home():
     total = fake_jobs + real_jobs
     return render_template('home.html', total=total, fake=fake_jobs, real=real_jobs, last_retrain=last_retrain)
 
+@app.route('/predict_form')
+def predict_form():
+    # Public prediction form (renders index.html)
+    fake_jobs, real_jobs = get_counts()
+    return render_template('index.html', fake=fake_jobs, real=real_jobs)
 
 @app.route('/predict', methods=['POST'])
 def predict():
