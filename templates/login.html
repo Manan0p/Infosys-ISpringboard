@@ -139,6 +139,9 @@
             </div>
           </div>
 
+          <!-- Hidden next parameter -->
+          <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+
           <!-- Submit -->
           <button type="submit" class="submit-btn">Sign In</button>
         </div>

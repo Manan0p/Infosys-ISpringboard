@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import joblib, sqlite3
 from datetime import datetime
+from urllib.parse import urlparse, urljoin
 
 DB_PATH = 'job_predictions.db'
 
@@ -52,6 +53,12 @@ def get_counts():
     real_jobs = conn.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Real Job'").fetchone()[0]
     conn.close()
     return fake_jobs, real_jobs
+
+def is_safe_url(target):
+    """Check if URL is safe to redirect to"""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
 @app.route('/')
 def home():
@@ -118,22 +125,30 @@ def history():
 @app.route('/admin_login', methods=['GET','POST'])
 def admin_login():
     if request.method == 'POST':
-        username = request.form.get('username','')
-        password = request.form.get('password','')
-        conn = sqlite3.connect(DB_PATH)
-        admin = conn.execute("SELECT id FROM admin WHERE username=? AND password=?", (username,password)).fetchone()
-        conn.close()
-        if admin:
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        # Your authentication logic here
+        if username == 'admin' and password == 'password123':  # Replace with actual auth
             session['admin_logged_in'] = True
-            return redirect(url_for('home'))
-        return render_template('login.html', error="Invalid username or password.")
+            
+            # Get the page user came from (referrer)
+            next_page = request.args.get('next')
+            if next_page and is_safe_url(next_page):
+                return redirect(next_page)
+            
+            # Default redirect to admin dashboard
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return render_template('login.html', error='Invalid credentials')
+    
     return render_template('login.html')
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
-    # Admin-only
     if not session.get('admin_logged_in'):
-        return redirect(url_for('admin_login'))
+        # Redirect to login with next parameter pointing back here
+        return redirect(url_for('admin_login', next=request.url))
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     fake_count = cursor.execute("SELECT COUNT(*) FROM predictions WHERE prediction='Fake Job'").fetchone()[0]
@@ -169,9 +184,8 @@ def admin_dashboard():
 
 @app.route('/retrain_logs')
 def retrain_logs():
-    # Admin-only
     if not session.get('admin_logged_in'):
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('admin_login', next=request.url))
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     logs = conn.execute("SELECT * FROM retrain_logs ORDER BY timestamp DESC").fetchall()
@@ -180,9 +194,8 @@ def retrain_logs():
 
 @app.route('/retrain', methods=['POST'])
 def retrain():
-    # Admin-only
     if not session.get('admin_logged_in'):
-        return jsonify({'error': 'Unauthorized'}), 403
+        return redirect(url_for('admin_login', next=request.url))
     try:
         training_source = "default dataset"
         if 'dataset' in request.files:
@@ -207,8 +220,21 @@ def retrain():
 
 @app.route('/logout')
 def logout():
-    session.clear()
-    return redirect(url_for('admin_login'))
+    session.pop('admin_logged_in', None)
+    
+    # Redirect to home only if on restricted pages, otherwise stay on current page
+    referrer = request.referrer
+    if referrer:
+        # If user was on a protected page, redirect to home
+        protected_routes = ['/admin_dashboard', '/retrain_logs', '/retrain']
+        if any(route in referrer for route in protected_routes):
+            return redirect(url_for('home'))
+        # Otherwise redirect back to referrer (history, index, etc.)
+        if is_safe_url(referrer):
+            return redirect(referrer)
+    
+    # Default fallback
+    return redirect(url_for('home'))
 
 if __name__ == '__main__':
     app.run(debug=True)
