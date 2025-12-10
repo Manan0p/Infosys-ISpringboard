@@ -3,6 +3,7 @@ import joblib, sqlite3, os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, urljoin
 
+
 DB_PATH = 'job_predictions.db'
 
 def init_db():
