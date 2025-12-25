@@ -1,4 +1,4 @@
-# JobGuard AI – Fake Job Posting Detection
+# JobGuard AI: Fake Job Posting Detection
 
 A modern, production-ready web application that detects fraudulent job postings using Machine Learning. Built with Flask, SQLite, and a beautiful responsive UI with dark/light theme support, admin dashboard, and real-time analytics.
 
